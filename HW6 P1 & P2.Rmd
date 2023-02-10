@@ -1,0 +1,190 @@
+---
+title: "HW 6 P1 & P2"
+author: "Amy Ly"
+date: "2/9/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(pscl)
+library(stats)
+```
+
+# Problem 1 Context
+ 
+An experiment was performed to test the effect of a toxic substance. 1500 insects were randomly assigned to 6 groups and each group were exposed to a fixed dose of the toxic substance. A day later, the number of dead insects (out of 250) was recorded. 
+
+X denotes the dose level (on a log scale) received by the insects in each group.
+
+Y denotes the number of insects that died (out of 250) in each group. 
+
+## Part A
+
+Fit a logistic regression model with X as the explanatory variable and famile =binomial. 
+
+```{r}
+df <- data.frame(X = c(1, 2, 3, 4, 5, 6), 
+                 dead = c(28, 53, 93, 126, 172, 197), 
+                 tot = c(250, 250, 250, 250, 250, 250)) %>% 
+  mutate(alive = tot-dead)
+
+fit_mod <-  glm(cbind(dead, alive) ~ X, family=binomial, data=df)
+
+rd <- resid(fit_mod, "deviance")
+plot(fit_mod$fit,rd)
+
+qqnorm(rd)
+qqline(rd)
+
+```
+
+
+## Part B
+
+Conduct the deviance goodness-of-fit test to assess if the fitted model is adequate. 
+
+```{r}
+
+df2 <- df %>% 
+  mutate(X = as.factor(X))
+
+sat <-  glm(cbind(dead, alive) ~ X, family=binomial, data=df2)
+
+anova(fit_mod, sat, test="Chisq")
+
+p.val <- anova(fit_mod, sat, test="Chisq")$Pr[2]
+
+test.stat <- anova(fit_mod, sat, test="Chisq")$Deviance[2]
+
+```
+Based on the goodness of fit test, there is little evidence (D =`r test.stat` and p-value = `r p.val`) that the saturated model (the fitted model from part a) is a better fit for the data. 
+
+## Part c
+
+Is there evidence for overdispersion?
+
+```{r}
+summary(fit_mod)
+```
+
+Usually, to assess if there is overdispersion with count data, we would divide the residual deviance by the degrees of freedom. Here, that ratio would be 1.4491/4 = 0.362275, which is much less than 1. 
+
+In this scenario, we do not have the issue of overdispersion. If the ratio was less than 0.01, then I would be concerned about underdispersion which may indicate that the model may be mispecified or that the link function is incorrect. 
+
+
+## Part d
+
+Fit an appropriate model based on your answer in part c. Conduct a drop-in-deviance test to assess the potential effect of dose on mortality rate. 
+
+Note that the drop-in deviance test (similar to the Extra sum of squares F-test in ordinary regression) compares the residual deviance between 2 nested models.
+
+
+```{r}
+fit_mod2 <-  glm(cbind(dead, alive) ~ 1, family=binomial(link="log"), data=df)
+
+anova(fit_mod2, fit_mod, test = "Chisq")
+
+
+```
+There is more evidence that the appropriate model is the more complex model, which is the fitted model from part a. 
+
+## Part e
+
+Using the model fitted in the previous part, interpret the estimated slope coefficient and give the 95% confidence interval. 
+
+```{r}
+a <- fit_mod$coef[1]
+b <- fit_mod$coef[2]
+V <- vcov(fit_mod)
+
+CI <- c(fit_mod$coef[2]-1.96*sqrt(V[2,2]), 
+  fit_mod$coef[2]+1.96*sqrt(V[2,2]))
+```
+
+For every unit increase in log dose, there is a $\beta =$ `r b` rate of change of the log odds ratio for death of insects. The 95% confidence interval is [`r CI`]
+
+
+# Problem 2 Context
+
+When farming practices are ecological, the number of butterflies observed on fields is expected to increase. To investigate this, several species of butterflies are observed and counted at a number of farms around Uppsala and Scania (in Sweden). 
+
+Covariates in the dataset are region (U for Uppsala, S for Scania) and years (number of years in ecological farming). There were 3 different species counted (Large Skipper, Pearly Heath, and Ringlet).
+
+## Problem
+
+Fit a Poisson regression model for the counts of Large Skipper depending on the region and the number of years in ecological farming. Examine the residuals, residual deviance, and deviance goodness-of-fit test. Weigh the evidence for or against overdispersion. Build a final model and summarize your findings. 
+
+```{r}
+butterfly <- read.csv("butterflies.csv")
+
+butterfly <- butterfly%>% 
+  select(Region, X.years, LargeSkipper)
+
+#w where LargeSkipper species and S region are the reference categories
+mod <- glm(LargeSkipper~Region*X.years, data=butterfly, family=poisson(link="log"))
+mod$aic
+summary(mod)
+
+rp <-resid(mod, "pearson")
+rd <- resid(mod, "deviance")
+
+par(mfrow=c(2,2))
+
+plot(mod$fit,rp, main="pearson")
+plot(mod$fit,rd,main="deviance")
+
+qqnorm(rp, main="pearson")
+qqline(rp)
+
+qqnorm(rd,main="deviance")
+qqline(rd)
+
+
+par(mfrow=c(1,1))
+plot(mod$fit,rp, col=1)
+points(mod$fit,rd, col=2)
+
+summary(mod)
+
+```
+
+When we check the ratio (64.021/52 = 1.23), we see that it is slightly greater than 1 and potentially indicates overdispersion.
+ 
+When we look at the Q-Q plots, we can see that there are several values that do not fall along the straight line near the right tail end. These may be outliers that are driving overdispersion. This is backed up by the fact that there are several points at the right end of the residuals versus fitted plots do not seem to follow one of the two bands that we expected to see (one for each region). 
+
+I will explore other models:
+
+```{r}
+
+mod2 <- glm(LargeSkipper~Region + X.years, data=butterfly, family=poisson(link="log"))
+anova(mod2, mod, test = "Chisq")
+
+mod3 <- glm(LargeSkipper~ X.years, data=butterfly, family=poisson(link="log"))
+anova(mod3, mod, test = "Chisq")
+
+mod4 <- glm(LargeSkipper~Region, data=butterfly, family=poisson(link="log"))
+anova(mod4, mod, test = "Chisq")
+
+```
+
+Based on the drop in deviance tests where we have either Region or X.Years as a term, there is strong evidence that the more complex model (the fitted model that has all of the interaction terms) is a better fit. However, when we compare mod2 (When we have Region + X.Years as terms) to mod, we see that there is little evidence for the complex model. 
+
+Another way to fix the overdispersion is to use the quasipoisson family:
+
+```{r}
+mod_quasi <- glm(LargeSkipper~Region +X.years, data=butterfly, family = quasipoisson)
+
+summary(mod_quasi)
+
+```
+
+After fitting the model with a quasipoisson family, we can see that fewer of the coefficients are statistically significant. 
+
+Therefore, my final model is:
+
+`glm(formula = LargeSkipper ~ Region + X.years, family = quasipoisson, 
+    data = butterfly)`
+
+The ratio of residual deviance to degrees of freedom is slightly reduced and we see from the model that the Region that the Largeskippers come from has the greatest influence. Compared to the Scania Region, there is a -1.48 multiplicative change in expected number of Largeskippers. 

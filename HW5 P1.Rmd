@@ -1,0 +1,92 @@
+---
+title: "ST 623 HW5"
+author: "Amy Ly"
+date: "2/9/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# Problem Context
+
+The following dataset was taken from Snedecor and Cochran (1967, p. 354) and was obtained from an experiment that wanted to determine the effects of temperature and storage time on teh loss of ascorbic acid in snap-beans. The beans were all harvested under uniform conditions at the Iowa Agricultural Station before 8 AM and then perpared and quick-frozen before noon on the same day. Three packages were assigned at ranom to each temperature and storage-time combination. 
+
+```{r}
+
+factors <- list(temp = c(0, 10, 20), storage = c(2, 4, 6, 8) )
+combo <- cross_df(factors)
+conc <- c(45, 45, 34, 47, 43, 28, 46, 41, 21, 46, 37, 16)
+df <- cbind(combo, conc)
+
+df$temp <- as.factor(df$temp)
+
+df
+
+```
+Suppose that the ascorbic acid concentration decays exponentially fast, with a decay rate that is temperature dependant. For a given storage temperature T, the expected concentration after time t (measured in weeks) is:
+
+$\mu = E(Y) = exp(-\alpha -\beta_T t)$
+
+Note that the initial concentration $exp(-\alpha)$ is assumed to be independent of storage condition. 
+
+
+## Part a
+
+Create a regression model, treating temperature as a factor and storage time as covariates. Write down the details of the model and the score equations. 
+
+Here I have a model with one factor with 3 levels and a covariate. Note that temp $=2^\circ F$ is the reference category. 
+
+$y_i = \alpha + \beta_0 1(temp=10) + \beta_1 1(temp=20) + \beta_3x_i$
+
+$\mu = E(Y) = e^{-\alpha-\beta_Tt}$
+
+The log likelihood would then be: 
+
+$-\frac{n}{2}log(2\pi \sigma^2) -\frac{1}{2\sigma^2}\sum^n_{i=1}(y_i-\mu)^2$
+
+To get the score function, we would take the derivative of the log likelihood function.
+
+
+```{r}
+mod <- glm(conc~temp:storage, data=df, family=gaussian(link="log"))
+
+summary(mod)
+```
+
+
+## Part b
+
+Estimate the times taken at each of the three temperature for the ascorbic acid combination to be reduced to 50% of the original value. 
+
+```{r}
+a <- mod$coef[1] 
+b_0 <- mod$coef[2]
+b_10 <- mod$coef[3]
+b_20 <- mod$coef[4]
+V <- vcov(mod)
+
+SE_0 <- sqrt(V[2,2])
+SE_10 <- sqrt(V[3,3])
+SE_20 <- sqrt(V[4,4])
+z <- qnorm(0.95)
+
+
+t_0 <- -log(2)/b_0
+t_10 <- -log(2)/b_10
+t_20 <- -log(2)/b_20
+
+CI_0 <- c(t_0-z*SE_0, t_0 +z*SE_0)
+CI_10 <- c(t_10-z*SE_10, t_10 +z*SE_10)
+CI_20 <- c(t_20-z*SE_20, t_20 +z*SE_20)
+
+```
+
+At 0 degrees Fahrenheit, it would require `r t_0` weeks for the ascorbic acid to be reduced to 50% of its original value, with a 95% confidence interval of (`r CI_0`) weeks.
+
+At 10 degrees Fahrenheit, it would require `r t_10` weeks for the ascorbic acid to be reduced to 50% of its original value, with a 95% confidence interval of (`r CI_10`) weeks.
+
+
+At 20 degrees Fahrenheit, it would require `r t_20` weeks for the ascorbic acid to be reduced to 50% of its original value, with a 95% confidence interval of (`r CI_20`) weeks.

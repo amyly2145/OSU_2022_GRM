@@ -1,0 +1,443 @@
+---
+title: "Homework 3 P3"
+author: "Amy Ly"
+date: "2/9/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Problem Context
+
+In an experiment, flour beetles Tribolium castaneum were sprayed with one of thre 3 insecticides in a solution at different doses The number of insects killed after a 6-day period is recorded below:
+
+
+| Insecticide |2.00 | 2.64| 3.48 |4.59 | 6.06 | 8.00 |
+|:---|:---|---|---|---|---|---:|
+|DDT | 3/50 | 5/49 | 19/49 | 19/38 | 24/49 | 35/50|
+|$\gamma-BHC$| 2/50 | 14/49 | 20/50 | 27/50 | 41/50 | 40/50 |
+|DDT + $\gamma-BHC$ | 28/50 | 37/50 | 46/50 | 48/50 | 49/50 | 50/50 | 
+
+Note that the third insecticide is a combination of the first 2. 
+
+```{r}
+
+df <- data.frame(dose = c(2.00, 2.64, 3.48, 4.59, 6.06, 8.00), 
+                 ddt = c(3/50, 5/49, 19/49, 19/38, 24/49, 35/50), 
+                 BHC = c(2/50, 14/49, 20/50, 27/50, 41/50, 40/50), 
+                 both = c(28/50, 37/50, 46/50, 48/50, 49/50, 50/50)
+                 )
+
+df <- df %>% 
+  pivot_longer(!dose, names_to = "chem", values_to = "rate")
+
+df <- df %>% 
+  mutate(
+    dead = c(3, 2, 28, 5, 14, 37, 19, 20, 46, 19, 27, 48, 24, 41, 49, 35, 40, 50), 
+    tot = c(50, 50, 50, 49, 49, 50, 49, 50, 50, 38, 50, 50, 49, 50, 50, 50, 50, 50), 
+    alive = tot-dead
+  ) 
+
+
+```
+
+
+### Part a 
+
+Perform exploratory data analysis and plot the relationship between dose and kill rate. 
+
+```{r}
+ggplot(data=df, aes(x=log(dose), y=rate, color=chem)) + 
+  geom_point()
+```
+
+### Part b
+
+Plot the logistic fitted curve for each of the insecticides.
+
+```{r}
+
+#data wrangling
+
+#remember that the order of the y matrix matters. c(dead, alive)
+
+logit.y_ddt <- df %>% 
+  filter(chem == "ddt") %>% 
+  glm(cbind(dead, alive) ~ dose, family=binomial, data=.)
+
+df_ddt <- df %>% 
+  filter(chem == "ddt") %>% 
+  select(dose) %>% 
+  mutate(pred_rate = as.numeric(logit.y_ddt$fit), 
+         chem = "ddt")
+
+logit.y_BHC <- df %>% 
+  filter(chem == "BHC") %>% 
+  glm(cbind(dead, alive) ~ dose, family=binomial, data=.)
+
+df_BHC <- df %>% 
+  filter(chem == "BHC") %>% 
+  select(dose) %>% 
+  mutate(pred_rate = as.numeric(logit.y_BHC$fit), 
+         chem = "BHC")
+
+logit.y_both <- df %>% 
+  filter(chem == "both") %>% 
+  glm(cbind(dead, alive) ~ dose, family=binomial, data=.)
+
+df_both <- df %>% 
+  filter(chem == "both") %>% 
+  select(dose) %>% 
+  mutate(pred_rate = as.numeric(logit.y_both$fit), 
+         chem = "both")
+
+#merge the dataframes into df
+
+df_temp <- rbind(df_BHC, df_both, df_ddt)
+
+df <- merge(df, df_temp, by = c("chem", "dose"))
+
+#plot the logistic fitted curves
+
+ggplot(data=df, aes(x=log(dose), y=rate, color=chem)) +
+   geom_point() + 
+  geom_line(aes(x=log(dose), y=pred_rate, color=chem))
+
+#lines(data$temperature, logit.y$fit)
+
+```
+
+
+### Part c
+
+Consider two models, one in which the relationship is described by three parallel straight lines in the log dose and one in which the three lines are straight but not parallel. Assess the evidence against the hypothesis of parallelism.
+
+Let BHC be the reference category, then assume we have a logit model that looks like: 
+
+$log\frac{Y_i}{1-Y_i} = p_i = \alpha + + \beta_1I_{DDT}+ \beta_2I_{both} + \beta_3 ldose_i + \beta_4I_{DDT}ldose_i + \beta_5I_{both}ldose_i + \varepsilon$
+
+If the lines are parallel, then $\beta_4 = 0$ and $\beta_5 = 0$ where all the lines would have different $\alpha$ intercept values. 
+
+
+```{r}
+
+df <- df %>% 
+  mutate(ldose = log(dose))
+
+logit.y <- df %>% 
+  glm(cbind(dead, alive) ~ chem*ldose, family=binomial, data=.)
+
+logit.y_constrain <- df %>% 
+  glm(cbind(dead, alive) ~ chem + ldose, family=binomial, data=.)
+
+# Do LRT test for beta_4 and beta_5
+
+anova(logit.y_constrain,logit.y, test = "LRT")
+
+```
+The p-value from the likelihood ratio test indicates that there is little evidence for parallelism (p-value = 0.1009). 
+
+
+### Part d
+
+Let chem be a 3-level factor, and let ldose be the log dose. Explain the relationship between the regression coefficients in the model formula chem + ldose and chem + ldose -1. Explain the relationship between the two covariance matrices.
+
+In these two models, we are only looking at how $\alpha$ changes. 
+
+In the model $y \sim chem + ldose$, BHC was considered as the reference category. 
+
+When the intercept is removed in $y \sim chem + ldose -1$, BHC shows up as a coefficient and the estimate is very similar to that of the intercept. 
+
+Due to the different parameterization, the two covariance matrices will be different because the $\alpha$ values are different for each chemical.
+
+```{r}
+
+logit.y_a <- df %>% 
+  glm(cbind(dead, alive) ~ chem +ldose, family=binomial, data=.)
+
+logit.y_b <- df %>% 
+  glm(cbind(dead, alive) ~ chem +ldose -1, family=binomial, data=.)
+
+logit.y_a
+logit.y_b
+
+vcov(logit.y_a)
+vcov(logit.y_b)
+
+
+```
+
+
+### Part e
+
+On the assumption that 3 parallel straight lines suffice, estimate the potency of the combination relative to each of the components. Use the Delta method to obtain a 90% confidence interval for each of these relative potencies. 
+I will be defining the following variables:
+
+$x_1$ = amount of $\gamma$-BHC 
+
+$x_2$ = amount of both 
+
+$x_3$ = amount of DDT
+
+If we are estimating the potency
+of the combination relative to BHC for example, then:
+
+\begin{equation}
+x_2 = x_1 \\
+p_1(x_2) = P_2(x_1) \\
+log(\frac{P_2(x_2)}{1-P_2(x_2)}) = log(\frac{P_1(x_1)}{1-P_1(x_1)}) \\
+\alpha_1 +\beta log(x_2) = \alpha_1 +\beta log(x_1) \\
+\frac{x_2}{x_1}  = e^{(\alpha_2-\alpha_1)/\beta}
+\end{equation}
+
+Then, when we calculate $\nabla g$:
+
+\begin{equation}
+\nabla g = (\frac{dg(\alpha, \beta)}{d\alpha_1},\frac{dg(\alpha, \beta)}{d\alpha_2},\frac{dg(\alpha, \beta)}{d\alpha_3},  \frac{dg(\alpha, \beta)}{d\beta}) \\
+ = (\frac{-e^{-(\alpha_1-\alpha_2)/\beta}}{\beta},\frac{e^{-(\alpha_1-\alpha_2)/\beta}}{\beta}, 0, \frac{(\alpha_1-\alpha_2)e^{-(\alpha_1-\alpha_2)/\beta}}{\beta^2})
+\end{equation}
+
+
+```{r}
+
+mod <- df %>% 
+  glm(cbind(dead, alive) ~ chem + ldose-1, family=binomial, data=.)
+
+a_1 <- mod$coefficients[1]   #alpha for BHC
+a_2 <- mod$coefficients[2]   #alpha for both
+a_3 <- mod$coefficients[3]   #alpha for DDT
+b <- mod$coefficients[4]     #beta
+V <- vcov(mod)
+z <- qnorm(0.95) #for 90# confidence interval
+
+#x_both / x_BHC
+
+theta1 <- exp((a_1-a_2)/b)
+g.prime1 <- c(-exp(-(a_1-a_2)/b), exp(-(a_1-a_2)/b), 0,  (a_1-a_2)*exp(-(a_1-a_2)/b)/b^2)
+theta.sd1 <- sqrt(g.prime1%*%V%*%g.prime1)
+
+theta1
+CI1 <- c(theta1-z*theta.sd1, theta1 +z*theta.sd1)
+CI1
+
+#x_both / x_DDT
+theta2 <- exp((a_3-a_2)/b)
+g.prime2 <- c(0, exp(-(a_3-a_2)/b), -exp(-(a_3-a_2)/b),  (a_3-a_2)*exp(-(a_3-a_2)/b)/b^2)
+theta.sd2 <- sqrt(g.prime2%*%V%*%g.prime2)
+
+theta2
+CI2 <- c(theta2-z*theta.sd2, theta2 + z*theta.sd2)
+CI2
+```
+The potency of combination relative to BHC is: 
+
+`r theta1` with a CI of (`r CI1`).
+
+The potency of combination relative to BHC is: 
+
+`r theta2` with a CI of (`r CI2`).
+
+
+### Part f
+
+Use Fieller's method to obtain a 90% confidence interval for each of the above relative potencies. 
+
+For a fixed $log\tau$ where $\tau= \frac{x_2}{x_1}$ which is the potency of combination relative to BHC, I am trying to solve $\alpha_1-\alpha_2 + \beta log\tau = 0$
+
+The variance of $\hat{\alpha_1}-\hat{\alpha_2} + \hat{\beta} log\tau = 0$ can be found with:
+
+$Var(\alpha_1) + Var(\alpha_2) + log^2\tau Var(\beta) -2Cov(\alpha_1, \alpha_2) - 2log\tau Cov(\alpha_1, \beta) - 2log\tau Cov(\alpha_2, \beta)$
+
+The (1-a)100% CI for $log\tau$ is then given by: 
+
+$\frac{\alpha_1^2 - 2\alpha_1 \alpha_2 + 2 \alpha_1 \beta log\tau - 2\alpha_2 \beta log\tau + \alpha^2_2 + \beta^2log^2\tau}{Var(\alpha_1) + Var(\alpha_2)+ log^2\tau Var(\beta) -2Cov(\alpha_1, \alpha_2) + 2log\tau Cov(\alpha_1, \beta) - 2log\tau Cov(\alpha_2, \beta)}$
+
+
+
+```{r, warning = FALSE, message = FALSE}
+
+mod <- df %>% 
+  glm(cbind(dead, alive) ~ chem + ldose-1, family=binomial, data=.)
+
+# CI for LD50
+
+a_1 <- mod$coefficients[1]   #alpha for BHC
+a_2 <- mod$coefficients[2]   #alpha for both
+a_3 <- mod$coefficients[3]   #alpha for DDT
+b <- mod$coefficients[4]     #beta
+V <- vcov(mod)
+
+#log (x_BHC/x_both) CI
+
+z <- qnorm(0.95) 
+tau_1 <- as.numeric(polyroot(c(a_1^2 - 2*a_1*a_2 + a_2^2 -V[1,1]*z^2 - V[2,2]*z^2 + 2*V[1,2]*z^2, 2*b*a_1 -2*b*a_2 -2*V[1,4]*z^2 +2*V[2,4]*z^2, b^2 - V[4,4]*z^2)))  
+
+#transformed interval to get CI for x_BHC/x_both
+theta1
+tau_1
+
+# log(x_DDT/x_both) CI 
+
+tau_2 <- as.numeric(polyroot(c(a_3^2 - 2*a_3*a_2 + a_2^2 +(-V[3,3] - V[2,2] + 2*V[3,2])*z^2, 2*b*a_3 -2*b*a_2+ (-2*V[3,4] +2*V[2,4])*z^2, b^2 - V[4,4]*z^2)))  
+
+#transformed interval to get CI for x_DDT/x_both
+theta2
+tau_2
+
+```
+
+The potency of combination relative to BHC is: 
+
+`r theta1` with a CI of (`r tau_1`).
+
+The potency of combination relative to BHC is: 
+
+`r theta2` with a CI of (`r tau_2`).
+
+
+### Part g
+
+Redo part e and part f using the c-log-log link. 
+
+```{r}
+
+mod <- df %>% 
+  glm(cbind(dead, alive) ~ chem + ldose-1, family=binomial(link="cloglog"), data=.)
+
+a_1 <- mod$coefficients[1]   #alpha for BHC
+a_2 <- mod$coefficients[2]   #alpha for both
+a_3 <- mod$coefficients[3]   #alpha for DDT
+b <- mod$coefficients[4]     #beta
+V <- vcov(mod)
+z <- qnorm(0.95) #for 90% confidence interval
+
+###Delta method CI
+
+#x_both / x_BHC
+
+theta3 <- exp((a_1-a_2)/b)
+g.prime1 <- c(-exp(-(a_1-a_2)/b), exp(-(a_1-a_2)/b), 0,  (a_1-a_2)*exp(-(a_1-a_2)/b)/b^2)
+theta.sd1 <- sqrt(g.prime1%*%V%*%g.prime1)
+
+theta3
+CI3 <- c(theta1-z*theta.sd1, theta1 +z*theta.sd1)
+CI3
+
+#x_both / x_DDT
+theta4 <- exp((a_3-a_2)/b)
+g.prime2 <- c(0, exp(-(a_3-a_2)/b), -exp(-(a_3-a_2)/b),  (a_3-a_2)*exp(-(a_3-a_2)/b)/b^2)
+theta.sd2 <- sqrt(g.prime2%*%V%*%g.prime2)
+
+theta4
+CI4 <- c(theta2-z*theta.sd2, theta2 + z*theta.sd2)
+CI4
+
+#Fieller's CI
+
+#log (x_BHC/x_both) CI
+
+z <- qnorm(0.95) 
+tau_3 <- polyroot(c(a_1^2 - 2*a_1*a_2 + a_2^2 +(-V[1,1] - V[2,2] + 2*V[1,2])*z^2, 2*b*a_1 -2*b*a_2+ (-2*V[1,4] +2*V[2,4])*z^2, b^2 - V[4,4]*z^2))  
+
+#transformed interval to get CI for x_BHC/x_both
+theta3
+tau_3
+
+# log(x_DDT/x_both) CI 
+
+tau_4 <- polyroot(c(a_3^2 - 2*a_3*a_2 + a_2^2 +(-V[3,3] - V[2,2] + 2*V[3,2])*z^2, 2*b*a_3 -2*b*a_2+ (-2*V[3,4] +2*V[2,4])*z^2, b^2 - V[4,4]*z^2))  
+
+#transformed interval to get CI for x_DDT/x_both
+theta4
+tau_4
+```
+With the Delta Method: 
+
+The potency of combination relative to BHC is: 
+
+`r theta3` with a CI of (`r CI3`).
+
+The potency of combination relative to BHC is: 
+
+`r theta4` with a CI of (`r CI4`).
+
+With the Fieller's Method: 
+
+The potency of combination relative to BHC is: 
+
+`r theta3` with a CI of (`r tau_3`).
+
+The potency of combination relative to BHC is: 
+
+`r theta4` with a CI of (`r tau_4`).
+
+
+
+### Part h
+
+Under the logistic model, estimate the combination dose required to give a 99% kill rate, and obtain a 90% confidence interval for this dose.
+
+We are going to solve the following equation to the the ldose required to have a 99% kill rate. 
+
+\begin{equation}
+p(x) = 0.99 \\
+= \frac{e^{\alpha_2 + \beta_2ldose}}{ 1+e^{\alpha_2 + \beta_2ldose}} \\
+0.99(1+e^{\alpha_2 + \beta_2ldose}) = e^{\alpha_2 + \beta_2ldose} \\ 
+0.99 = 0.01e^{\alpha_2 + \beta_2ldose} \\ 
+99 = e^{\alpha_2 + \beta_2ldose} \\ 
+log(99) = \alpha_2 + \beta_2ldose \\
+\beta_2ldose = log(99) - \alpha_2 \\ 
+ldose = \frac{log(99) - \alpha_2}{\beta_2} \\
+dose = exp(\frac{log(99) - \alpha_2}{\beta_2})
+\end{equation}
+
+Note that $exp(\frac{log(99) - \alpha_2}{\beta_2}) = exp(\frac{log(99) - (\beta_1 + \beta_2)}{\beta_4+\beta_5})$ based on our logistic model parameters.
+
+```{r}
+logit.y <- df %>% 
+  glm(cbind(dead, alive) ~ chem*ldose, family=binomial, data=.)
+
+a_2 <- logit.y$coef[1] +logit.y$coef[2]
+b_2 <- logit.y$coef[4]+logit.y$coef[5]
+V <- vcov(logit.y)
+z <- qnorm(0.95)
+
+
+dose <- exp((log(99) -a_2)/b_2)
+dose # Combination dose in terms of mg/10cm^2
+
+
+theta5 <- (log(99)-a_2)/b_2
+
+g.prime3 <- c(-(1/b_2), -(1/b_2), 0,-((log(99) -a_2)/b_2^2), -((log(99) -a_2)/b_2^2), 0)
+
+theta.sd3 <- sqrt(g.prime3%*%V%*%g.prime3)
+
+CI <- c(theta3-z*theta.sd3, theta3 +z*theta.sd3) #for ldose
+
+theta5
+CI5 <- exp(CI) #cI for dose
+CI5
+
+```
+
+
+The desired drug dose is : 
+
+`r theta5` with a CI of (`r CI5`).
+
+
+### Part i 
+
+Give a brief summary of your conclusions regarding the effectiveness of these 3 insecticides. 
+
+Based on the Fieller's confidence intervals, 1 is a possible value and it suggests that it may be possible that there is no difference in effectiveness. It is possible that the combination dose is just as potent relative to $\gamma$-BHC or DDT by itself since it produces the same effect at a similar concentration levels. 
+
+Based on the visualizations of the plot, the general trend of kill rate for the combination is higher than $\gamma$-BHC or DDT. 
+
+There is suggestive evidence to suggest that the combination of chemicals is more effective at killing pests. 
+
+

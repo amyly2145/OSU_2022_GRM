@@ -1,0 +1,118 @@
+---
+title: "Homework 2 P3"
+author: "Amy Ly"
+date: "2/9/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem Context
+
+The data below are launch temperatures (degrees Farenheit) and an indicator o O-ring failures for 24 space shuttle launches prior to the space shuttle Challenger disaster of January 27, 1986. Note that 0 indicates "No Failure" while 1 indicates "Failure"
+
+```{r}
+data <-
+  data.frame(temperature = c(53, 56, 57, 63, 66, 67, 67, 67, 
+                             68, 69, 70, 70, 70, 70, 72, 73, 
+                             75, 75, 76, 76, 78, 79, 80, 81), 
+                  failure = c(1, 1, 1, 0, 0, 0, 0, 0, 
+                              0, 0, 0, 1, 1, 1, 0, 0, 
+                              0, 1, 0, 0, 0, 0, 0, 0))
+
+head(data)
+
+```
+
+### Exploratory Data Analysis
+
+```{r}
+
+plot(data$temperature, data$failure/nrow(data), 
+     xlab="temperature", ylab="failure rate")
+```
+
+Visualize the data
+
+### Part a
+
+Fit the logistic regression of Failure on Temperature. 
+
+The estimated coefficients and their standard errors are then summarized below. 
+
+
+```{r}
+
+##  One column binary response 
+
+n <- nrow(data)
+y0=as.numeric(data$failure)
+
+X=matrix(1,n,2)
+X[,2]=data$temperature
+
+
+#### Fit logistic regressions 
+
+logit.y = glm(y0~data$temperature, family=binomial)
+
+summary(logit.y)
+
+```
+
+### Part b
+
+Test whether the coefficient of Temperature is 0 using Wald's test. Report a one-sided p-value where the alternative hypothesis is that the coefficient is negative (that the odds of failure decreases with increasing temperature).
+
+
+```{r}
+
+logit.y$coef
+V = vcov(logit.y)
+
+#Wald test
+
+Wald <-(logit.y$coef[2]-0)/sqrt(solve(V)[2,2])
+
+Wald
+
+p.val <- pnorm(Wald, lower.tail=TRUE)
+
+p.val
+
+```
+
+Since the resulting p-value is 0.499 and much greater than the $\alpha =0.05$, we do not have enough evidence to say that the coefficient of Temperature is not equal to 0. 
+
+### Part c
+
+Give the 95% confidence interval for the coefficient of Temperature. 
+
+```{r}
+
+#95% CI for beta
+c(logit.y$coef[2]-1.96*sqrt(V[2,2]), 
+  logit.y$coef[2]+1.96*sqrt(V[2,2]))
+
+
+```
+
+The 95% confidence interval does not contain 0, which indicates that there is a possibility that the coefficient is negative. 
+
+### Part d
+
+What is the estimated probability of failure at 31 degrees Farenheit?
+
+```{r}
+# At temp = 31, parameter theta = alpha + beta*31
+theta_hat = logit.y$coef[1]+logit.y$coef[2]*31
+
+exp(theta_hat) # Predicted survival odds 
+
+exp(theta_hat)/(1+exp(theta_hat)) # Predicted survival probability 
+
+```
+
+At 31 degrees Farenheit, the probability of O-ring failure is about 99.6%.
